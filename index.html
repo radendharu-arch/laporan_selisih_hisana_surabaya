@@ -45,11 +45,43 @@
   .filters { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
   .filters select { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
 
+  .table-wrap { width:100%; }
   table { width:100%; border-collapse:collapse; background:var(--card); border-radius:10px; overflow:hidden; border:1px solid var(--border); }
   th, td { padding:10px 12px; text-align:left; font-size:13px; border-bottom:1px solid var(--border); }
   th { background:#f1f5f9; font-size:11px; text-transform:uppercase; color:var(--abu); }
   tr.rowclick { cursor:pointer; }
   tr.rowclick:hover { background:#f8fafc; }
+
+  /* --- FOTO MULTI PREVIEW --- */
+  .foto-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .foto-item { position:relative; width:76px; height:76px; }
+  .foto-item img { width:100%; height:100%; object-fit:cover; border-radius:6px; border:1px solid var(--border); }
+  .foto-item .rm { position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%; background:var(--merah); color:#fff; border:2px solid #fff; font-size:12px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+
+  /* --- MOBILE RESPONSIVE --- */
+  @media (max-width: 700px) {
+    main { padding:12px; }
+    header { padding:12px 14px; }
+    .kpis { grid-template-columns: repeat(2, 1fr); gap:8px; }
+    .filters { flex-direction:column; align-items:stretch; }
+    .filters select, .filters .btn-tambah { width:100%; min-height:44px; }
+
+    table thead { display:none; }
+    table, tbody, tr, td { display:block; width:100%; }
+    table { border:none; background:transparent; }
+    tr.rowclick { background:var(--card); border:1px solid var(--border); border-radius:10px; margin-bottom:10px; padding:4px 0; }
+    td { display:flex; justify-content:space-between; align-items:center; gap:10px; text-align:right; border-bottom:1px solid var(--border); padding:8px 12px; }
+    td:last-child { border-bottom:none; }
+    td::before { content: attr(data-label); font-weight:600; color:var(--abu); text-align:left; font-size:11px; text-transform:uppercase; }
+
+    #login { margin:24px auto; padding:20px; }
+    .role-btn, #login button.submit { min-height:46px; }
+    #modal, #modal-add { max-width:100%; margin:0; border-radius:12px; }
+    #overlay, #overlay-add { padding:0; align-items:flex-end; }
+    #modal, #modal-add { border-radius:16px 16px 0 0; max-height:92vh; overflow:auto; }
+    #modal-add input, #modal-add select, #modal-add textarea, #login select, #login input { font-size:16px; }
+    .modal-actions button, .btn-tambah, .btn-save, .btn-close { min-height:46px; }
+  }
   .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
   .badge.hijau { background:var(--hijau-bg); color:var(--hijau); }
   .badge.kuning { background:var(--kuning-bg); color:var(--kuning); }
@@ -132,6 +164,7 @@
 
     <div class="filters" id="filters"></div>
 
+    <div class="table-wrap">
     <table>
       <thead>
         <tr>
@@ -142,6 +175,7 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
+    </div>
     <div id="empty" style="display:none;">Belum ada data selisih untuk ditampilkan.</div>
   </div>
 
@@ -191,9 +225,9 @@
     <label class="field-label">Keterangan / Action Plan (opsional)</label>
     <textarea id="add-keterangan" placeholder="Tulis keterangan / rencana tindak lanjut kalau ada..."></textarea>
 
-    <label class="field-label">Bukti Foto (opsional)</label>
-    <input type="file" id="add-foto" accept="image/*" onchange="onFotoPickedAdd(event)">
-    <img id="add-foto-preview" alt="preview" style="display:none; margin-top:8px; max-width:160px; max-height:160px; border-radius:6px; border:1px solid var(--border);">
+    <label class="field-label">Bukti Foto (opsional, bisa lebih dari 1)</label>
+    <input type="file" id="add-foto" accept="image/*" multiple onchange="onFotoPickedAdd(event)">
+    <div id="add-foto-grid" class="foto-grid"></div>
     <div id="add-foto-status" style="font-size:11px;color:var(--abu);margin-top:4px;"></div>
 
     <div id="add-err">Gagal menyimpan, coba lagi.</div>
@@ -366,13 +400,13 @@ function render() {
   tbody.innerHTML = rows.map((r, i) => {
     const st = statusFor(r);
     return `<tr class="rowclick" onclick="openModal(${i})">
-      <td>${r['Tanggal']}</td>
-      <td>${r['Nama Gerai']}</td>
-      <td>${r['Platform']}</td>
-      <td>${fmtRp(r['Omzet POS'])}</td>
-      <td>${fmtRp(r['Omzet Platform'])}</td>
-      <td>${fmtRp(r['Selisih Rp'])} (${Number(r['Selisih Persen']||0).toFixed(1)}%)</td>
-      <td><span class="badge ${st.cls}">${st.label}</span></td>
+      <td data-label="Tanggal">${r['Tanggal']}</td>
+      <td data-label="Gerai">${r['Nama Gerai']}</td>
+      <td data-label="Platform">${r['Platform']}</td>
+      <td data-label="Omzet POS">${fmtRp(r['Omzet POS'])}</td>
+      <td data-label="Omzet Platform">${fmtRp(r['Omzet Platform'])}</td>
+      <td data-label="Selisih">${fmtRp(r['Selisih Rp'])} (${Number(r['Selisih Persen']||0).toFixed(1)}%)</td>
+      <td data-label="Status"><span class="badge ${st.cls}">${st.label}</span></td>
     </tr>`;
   }).join('');
 
@@ -393,45 +427,68 @@ let currentRow = null;
 function fotoUrl(fotoId, size) {
   return `https://drive.google.com/thumbnail?id=${fotoId}&sz=w${size || 400}`;
 }
+function fotoIdsOf(c) {
+  // Backend menyimpan semua ID foto (1 atau lebih) di kolom "Foto ID", dipisah koma.
+  const raw = c['Foto IDs'] || c['Foto ID'] || '';
+  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+}
 function fotoViewUrl(fotoId) {
   return `https://drive.google.com/file/d/${fotoId}/view`;
 }
 
-function processFoto(file, previewEl, statusEl, onReady) {
-  if (!file) { onReady(null); return; }
-  statusEl.textContent = 'Memproses foto...';
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    const img = new Image();
-    img.onload = function () {
-      const MAX_W = 1200;
-      const scale = Math.min(1, MAX_W / img.width);
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      const base64 = dataUrl.split(',')[1];
-      const foto = { base64, mime: 'image/jpeg', name: (file.name || 'bukti') + '.jpg' };
-
-      previewEl.src = dataUrl;
-      previewEl.style.display = 'block';
-      const kb = Math.round(base64.length * 0.75 / 1024);
-      statusEl.textContent = `Siap diupload (~${kb} KB)`;
-      onReady(foto);
+function processFoto(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const img = new Image();
+      img.onload = function () {
+        const MAX_W = 1200;
+        const scale = Math.min(1, MAX_W / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const base64 = dataUrl.split(',')[1];
+        resolve({ base64, mime: 'image/jpeg', name: (file.name || 'bukti') + '.jpg', dataUrl });
+      };
+      img.src = e.target.result;
     };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 }
 
-let pendingFotoAdd = null;
-function onFotoPickedAdd(evt) {
-  const file = evt.target.files[0];
-  if (!file) { pendingFotoAdd = null; return; }
-  processFoto(file, document.getElementById('add-foto-preview'), document.getElementById('add-foto-status'),
-    (foto) => { pendingFotoAdd = foto; });
+// Bisa pilih/ambil lebih dari 1 foto sekaligus. Karena <input> tidak diberi atribut
+// "capture", browser HP akan tetap menampilkan pilihan Kamera ATAU Galeri/Files.
+let pendingFotosAdd = [];
+function renderFotoGrid() {
+  const grid = document.getElementById('add-foto-grid');
+  const statusEl = document.getElementById('add-foto-status');
+  grid.innerHTML = pendingFotosAdd.map((f, i) => `
+    <div class="foto-item">
+      <img src="${f.dataUrl}">
+      <button type="button" class="rm" onclick="removeFotoAdd(${i})">&times;</button>
+    </div>
+  `).join('');
+  if (!pendingFotosAdd.length) { statusEl.textContent = ''; return; }
+  const totalKb = Math.round(pendingFotosAdd.reduce((a, f) => a + f.base64.length * 0.75, 0) / 1024);
+  statusEl.textContent = `${pendingFotosAdd.length} foto siap diupload (~${totalKb} KB)`;
+}
+function removeFotoAdd(i) {
+  pendingFotosAdd.splice(i, 1);
+  renderFotoGrid();
+}
+async function onFotoPickedAdd(evt) {
+  const files = Array.from(evt.target.files || []);
+  if (!files.length) return;
+  document.getElementById('add-foto-status').textContent = 'Memproses foto...';
+  for (const file of files) {
+    const foto = await processFoto(file);
+    pendingFotosAdd.push(foto);
+  }
+  evt.target.value = ''; // biar bisa pilih file yang sama lagi / nambah foto lagi
+  renderFotoGrid();
 }
 
 function openModal(idx) {
@@ -449,7 +506,9 @@ function openModal(idx) {
       <span class="who">${c['Nama'] || c['Role']}</span>
       <span class="when">${new Date(c['Waktu']).toLocaleString('id-ID')}</span>
       <div>${c['Keterangan'] || ''}</div>
-      ${c['Foto ID'] ? `<img class="foto-thumb" src="${fotoUrl(c['Foto ID'], 300)}" onclick="window.open('${fotoViewUrl(c['Foto ID'])}','_blank')">` : ''}
+      ${fotoIdsOf(c).length ? `<div class="foto-grid">${fotoIdsOf(c).map(id =>
+        `<div class="foto-item"><img src="${fotoUrl(id, 300)}" onclick="window.open('${fotoViewUrl(id)}','_blank')"></div>`
+      ).join('')}</div>` : ''}
     </div>
   `).join('') : '<div class="comment" style="color:var(--abu)">Belum ada action plan.</div>';
 
@@ -470,9 +529,8 @@ function openAddModal() {
   document.getElementById('add-status').value = 'Belum Terselesaikan';
   document.getElementById('add-keterangan').value = '';
   document.getElementById('add-foto').value = '';
-  document.getElementById('add-foto-preview').style.display = 'none';
-  document.getElementById('add-foto-status').textContent = '';
-  pendingFotoAdd = null;
+  pendingFotosAdd = [];
+  renderFotoGrid();
   document.getElementById('add-err').style.display = 'none';
   document.getElementById('overlay-add').style.display = 'flex';
 }
@@ -517,22 +575,28 @@ async function submitDataSelisih() {
 
       // Kalau kacab langsung isi keterangan/action plan atau bukti foto pas nambah data,
       // kirim juga sebagai action plan pertama untuk baris ini.
-      if (keterangan || pendingFotoAdd) {
+      if (keterangan || pendingFotosAdd.length) {
         try {
           const planPayload = {
             selisihId: res.id, tanggal, keterangan,
             role: STATE.role, kode: STATE.kode, pin: STATE.pin
           };
-          if (pendingFotoAdd) {
-            planPayload.fotoBase64 = pendingFotoAdd.base64;
-            planPayload.fotoMime = pendingFotoAdd.mime;
-            planPayload.fotoName = pendingFotoAdd.name;
+          if (pendingFotosAdd.length) {
+            // Array foto (bisa lebih dari 1) — perlu backend addActionPlan yang sudah
+            // diupdate untuk menyimpan semua foto dan mengembalikan fotoIds (array).
+            planPayload.fotos = pendingFotosAdd.map(f => ({ base64: f.base64, mime: f.mime, name: f.name }));
+            // Field lama tetap dikirim (foto pertama) supaya backend versi lama masih jalan.
+            planPayload.fotoBase64 = pendingFotosAdd[0].base64;
+            planPayload.fotoMime = pendingFotosAdd[0].mime;
+            planPayload.fotoName = pendingFotosAdd[0].name;
           }
           const planRes = await apiPost('addActionPlan', planPayload);
           if (planRes.success) {
             STATE.actionPlans.push({
               'ID': planRes.id, 'Selisih ID': res.id, 'Tanggal': tanggal,
-              'Keterangan': keterangan, 'Foto ID': planRes.fotoId || '',
+              'Keterangan': keterangan,
+              'Foto ID': planRes.fotoId || '',
+              'Foto IDs': (planRes.fotoIds || (planRes.fotoId ? [planRes.fotoId] : [])).join(','),
               'Role': STATE.role, 'Nama': planRes.nama, 'Waktu': planRes.waktu
             });
           }
