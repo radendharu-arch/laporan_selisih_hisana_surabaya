@@ -2,8 +2,18 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Laporan Selisih POS - Platform | Hisana</title>
+
+<!-- PWA: biar bisa di-install jadi aplikasi di HP (Android: "Install app" / iPhone: "Add to Home Screen") -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e293b">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Selisih Hisana">
 <style>
   :root {
     --merah:#dc2626; --merah-bg:#fee2e2;
@@ -80,7 +90,7 @@
     #overlay, #overlay-add { padding:0; align-items:flex-end; }
     #modal, #modal-add { border-radius:16px 16px 0 0; max-height:92vh; overflow:auto; }
     #modal-add input, #modal-add select, #modal-add textarea, #login select, #login input { font-size:16px; }
-    .modal-actions button, .btn-tambah, .btn-save, .btn-close { min-height:46px; }
+    .modal-actions button, .btn-tambah, .btn-save, .btn-close, .btn-foto { min-height:46px; }
   }
   .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
   .badge.hijau { background:var(--hijau-bg); color:var(--hijau); }
@@ -118,6 +128,8 @@
   #modal-add select, #modal-add input { width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
   #modal-add textarea { width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; font-size:13px; min-height:70px; font-family:inherit; }
   #modal-add input[type=file] { width:100%; font-size:12px; }
+  .btn-foto { flex:1; padding:10px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
+  .btn-foto:active { background:var(--abu-bg); }
   #add-err { color:var(--merah); font-size:12px; margin-top:6px; display:none; }
   .btn-tambah { background:var(--biru); color:#fff; border:none; padding:9px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
 </style>
@@ -226,7 +238,14 @@
     <textarea id="add-keterangan" placeholder="Tulis keterangan / rencana tindak lanjut kalau ada..."></textarea>
 
     <label class="field-label">Bukti Foto (opsional, bisa lebih dari 1)</label>
-    <input type="file" id="add-foto" accept="image/*" multiple onchange="onFotoPickedAdd(event)">
+    <div style="display:flex; gap:8px;">
+      <button type="button" class="btn-foto" onclick="document.getElementById('add-foto-camera').click()">📷 Kamera</button>
+      <button type="button" class="btn-foto" onclick="document.getElementById('add-foto-gallery').click()">🖼️ Galeri</button>
+    </div>
+    <!-- Tanpa "multiple" + capture="environment" -> HP langsung buka kamera -->
+    <input type="file" id="add-foto-camera" accept="image/*" capture="environment" style="display:none" onchange="onFotoPickedAdd(event)">
+    <!-- "multiple" tanpa capture -> buka galeri/file manager, bisa pilih banyak foto sekaligus -->
+    <input type="file" id="add-foto-gallery" accept="image/*" multiple style="display:none" onchange="onFotoPickedAdd(event)">
     <div id="add-foto-grid" class="foto-grid"></div>
     <div id="add-foto-status" style="font-size:11px;color:var(--abu);margin-top:4px;"></div>
 
@@ -528,7 +547,8 @@ function openAddModal() {
   document.getElementById('add-platform-omzet').value = '';
   document.getElementById('add-status').value = 'Belum Terselesaikan';
   document.getElementById('add-keterangan').value = '';
-  document.getElementById('add-foto').value = '';
+  document.getElementById('add-foto-camera').value = '';
+  document.getElementById('add-foto-gallery').value = '';
   pendingFotosAdd = [];
   renderFotoGrid();
   document.getElementById('add-err').style.display = 'none';
@@ -632,6 +652,15 @@ async function submitDataSelisih() {
   }
   populateKacabDropdown(); // belum login -> cuma perlu isi dropdown kacab di layar login
 })();
+
+// Daftarin service worker biar browser anggap ini installable (bisa "Add to Home Screen" / "Install app")
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {
+      // Kalau gagal (misal dibuka dari file:// lokal), abaikan saja - dashboard tetap jalan normal.
+    });
+  });
+}
 </script>
 
 </body>
