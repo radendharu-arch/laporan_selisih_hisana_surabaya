@@ -89,7 +89,7 @@
     #modal, #modal-add { max-width:100%; margin:0; border-radius:12px; }
     #overlay, #overlay-add { padding:0; align-items:flex-end; }
     #modal, #modal-add { border-radius:16px 16px 0 0; max-height:92vh; overflow:auto; }
-    #modal-add input, #modal-add select, #modal-add textarea, #login select, #login input { font-size:16px; }
+    #modal-add input, #modal-add select, #modal-add textarea, #modal select, #modal textarea, #login select, #login input { font-size:16px; }
     .modal-actions button, .btn-tambah, .btn-save, .btn-close, .btn-foto { min-height:46px; }
   }
   .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
@@ -113,6 +113,9 @@
   .comment .foto-thumb { display:block; margin-top:8px; max-width:160px; max-height:160px; border-radius:6px; border:1px solid var(--border); cursor:pointer; }
   #modal textarea { width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; font-size:13px; min-height:70px; font-family:inherit; }
   #modal label.field-label { display:block; font-size:12px; color:var(--abu); margin:10px 0 4px; }
+  #modal select, #modal textarea { width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; font-size:14px; font-family:inherit; }
+  #modal textarea { min-height:60px; }
+  #modal input[type=file] { width:100%; font-size:12px; }
   #modal input[type=file] { width:100%; font-size:12px; }
   #modal .modal-actions { display:flex; gap:8px; margin-top:10px; }
   #modal .modal-actions button { flex:1; padding:10px; border-radius:8px; border:none; font-size:13px; font-weight:600; cursor:pointer; }
@@ -198,6 +201,35 @@
     <h3 id="modal-title"></h3>
     <div class="meta" id="modal-meta"></div>
     <div class="comments" id="modal-comments"></div>
+
+    <div id="modal-followup" style="display:none;">
+      <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
+      <label class="field-label">Update Status</label>
+      <select id="detail-status">
+        <option value="">-- Status tidak diubah --</option>
+        <option value="Belum Terselesaikan">Belum Terselesaikan</option>
+        <option value="Selesai">Selesai</option>
+      </select>
+
+      <label class="field-label">Keterangan / Action Plan Tambahan (opsional)</label>
+      <textarea id="detail-keterangan" placeholder="Tulis update/tindak lanjutnya..."></textarea>
+
+      <label class="field-label">Bukti Foto Tambahan (opsional, bisa lebih dari 1)</label>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn-foto" onclick="document.getElementById('detail-foto-camera').click()">📷 Kamera</button>
+        <button type="button" class="btn-foto" onclick="document.getElementById('detail-foto-gallery').click()">🖼️ Galeri</button>
+      </div>
+      <input type="file" id="detail-foto-camera" accept="image/*" capture="environment" style="display:none" onchange="onFotoPickedDetail(event)">
+      <input type="file" id="detail-foto-gallery" accept="image/*" multiple style="display:none" onchange="onFotoPickedDetail(event)">
+      <div id="detail-foto-grid" class="foto-grid"></div>
+      <div id="detail-foto-status" style="font-size:11px;color:var(--abu);margin-top:4px;"></div>
+
+      <div id="detail-err" style="color:var(--merah);font-size:12px;display:none;margin-top:8px;"></div>
+
+      <div class="modal-actions" style="margin-top:12px;">
+        <button class="btn-save" id="btn-save-followup" onclick="submitFollowUp()">Simpan Update</button>
+      </div>
+    </div>
 
     <div class="modal-actions">
       <button class="btn-close" onclick="closeModal()">Tutup</button>
@@ -414,6 +446,20 @@ function fmtRp(n) {
   return 'Rp' + n.toLocaleString('id-ID');
 }
 
+// Google Sheets kadang otomatis ngonversi "Tanggal" jadi tipe Date beneran, jadi yang
+// balik dari API bisa berupa ISO string kayak "2026-09-23T17:00:00.000Z" (itu tengah
+// malam WIB tanggal 24, cuma keliatan tanggal 23 krn ditulis dalam UTC). Fungsi ini
+// nampilin sebagai tanggal biasa dd/mm/yyyy sesuai zona waktu Indonesia.
+function fmtTanggal(v) {
+  if (!v) return '-';
+  const s = String(v);
+  const plain = s.match(/^(\d{4})-(\d{2})-(\d{2})$/); // format polos "YYYY-MM-DD" tanpa jam
+  if (plain) return `${plain[3]}/${plain[2]}/${plain[1]}`;
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function render() {
   const rows = scopedRows();
   const tbody = document.getElementById('tbody');
@@ -422,7 +468,7 @@ function render() {
   tbody.innerHTML = rows.map((r, i) => {
     const st = statusFor(r);
     return `<tr class="rowclick" onclick="openModal(${i})">
-      <td data-label="Tanggal">${r['Tanggal']}</td>
+      <td data-label="Tanggal">${fmtTanggal(r['Tanggal'])}</td>
       <td data-label="Gerai">${r['Nama Gerai']}</td>
       <td data-label="Platform">${r['Platform']}</td>
       <td data-label="Omzet POS">${fmtRp(r['Omzet POS'])}</td>
@@ -440,7 +486,7 @@ function render() {
     <div class="kpi"><div class="label">Total Baris</div><div class="value">${rows.length}</div></div>
     <div class="kpi"><div class="label">Total Selisih</div><div class="value">${fmtRp(totalSelisih)}</div></div>
     <div class="kpi"><div class="label">Selisih</div><div class="value" style="color:var(--merah)">${besar}</div></div>
-    <div class="kpi"><div class="label">Match</div><div class="value" style="color:var(--hijau)">${match}</div></div>
+    <div class="kpi"><div class="label">Selesai</div><div class="value" style="color:var(--hijau)">${match}</div></div>
   `;
 }
 
@@ -515,8 +561,31 @@ async function onFotoPickedAdd(evt) {
 
 function openModal(idx) {
   currentRow = scopedRows()[idx];
+  renderModalBody();
+
+  // Cuma Kacab yang boleh update status/tambah keterangan & foto susulan, dan cuma buat
+  // gerai di kacab dia sendiri (bukan punya kacab lain, dan bukan buat role Keuangan).
+  const bisaFollowUp = STATE.role === 'KACAB' && String(currentRow['Kode Kacab']) === String(STATE.kode);
+  document.getElementById('modal-followup').style.display = bisaFollowUp ? 'block' : 'none';
+  if (bisaFollowUp) {
+    document.getElementById('detail-status').value = '';
+    document.getElementById('detail-keterangan').value = '';
+    document.getElementById('detail-foto-camera').value = '';
+    document.getElementById('detail-foto-gallery').value = '';
+    pendingFotosDetail = [];
+    renderFotoGridDetail();
+    document.getElementById('detail-err').style.display = 'none';
+  }
+
+  document.getElementById('overlay').style.display = 'flex';
+  pushModalHistory();
+}
+// Nampilin ulang judul, meta status, dan daftar komentar modal detail berdasarkan
+// currentRow & STATE.actionPlans terkini - dipanggil pas buka modal maupun abis
+// berhasil update status/keterangan biar keliatan langsung tanpa tutup-buka modal lagi.
+function renderModalBody() {
   document.getElementById('modal-title').textContent =
-    `${currentRow['Nama Gerai']} - ${currentRow['Platform']} (${currentRow['Tanggal']})`;
+    `${currentRow['Nama Gerai']} - ${currentRow['Platform']} (${fmtTanggal(currentRow['Tanggal'])})`;
   const st = statusFor(currentRow);
   document.getElementById('modal-meta').innerHTML =
     `Selisih ${fmtRp(currentRow['Selisih Rp'])} (${Number(currentRow['Selisih Persen']||0).toFixed(1)}%) &middot; <span class="badge ${st.cls}">${st.label}</span>`;
@@ -533,13 +602,97 @@ function openModal(idx) {
       ).join('')}</div>` : ''}
     </div>
   `).join('') : '<div class="comment" style="color:var(--abu)">Belum ada action plan.</div>';
-
-  document.getElementById('overlay').style.display = 'flex';
-  pushModalHistory();
 }
 function closeModal() {
   document.getElementById('overlay').style.display = 'none';
   popModalHistory();
+}
+
+// ---- Foto buat form follow-up di modal detail (sama caranya kayak modal Tambah Data) ----
+let pendingFotosDetail = [];
+function renderFotoGridDetail() {
+  const grid = document.getElementById('detail-foto-grid');
+  const statusEl = document.getElementById('detail-foto-status');
+  grid.innerHTML = pendingFotosDetail.map((f, i) => `
+    <div class="foto-item">
+      <img src="${f.dataUrl}">
+      <button type="button" class="rm" onclick="removeFotoDetail(${i})">&times;</button>
+    </div>
+  `).join('');
+  if (!pendingFotosDetail.length) { statusEl.textContent = ''; return; }
+  const totalKb = Math.round(pendingFotosDetail.reduce((a, f) => a + f.base64.length * 0.75, 0) / 1024);
+  statusEl.textContent = `${pendingFotosDetail.length} foto siap diupload (~${totalKb} KB)`;
+}
+function removeFotoDetail(i) {
+  pendingFotosDetail.splice(i, 1);
+  renderFotoGridDetail();
+}
+async function onFotoPickedDetail(evt) {
+  const files = Array.from(evt.target.files || []);
+  if (!files.length) return;
+  document.getElementById('detail-foto-status').textContent = 'Memproses foto...';
+  for (const file of files) {
+    pendingFotosDetail.push(await processFoto(file));
+  }
+  evt.target.value = '';
+  renderFotoGridDetail();
+}
+
+// Kirim update status / keterangan / foto susulan buat baris yang lagi kebuka di modal.
+async function submitFollowUp() {
+  const statusVal = document.getElementById('detail-status').value;
+  const keterangan = document.getElementById('detail-keterangan').value.trim();
+  const errEl = document.getElementById('detail-err');
+  if (!statusVal && !keterangan && !pendingFotosDetail.length) {
+    errEl.textContent = 'Isi status baru, keterangan, atau foto dulu ya.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  const btn = document.getElementById('btn-save-followup');
+  btn.disabled = true; btn.textContent = 'Menyimpan...';
+
+  const payload = {
+    selisihId: currentRow['ID'], tanggal: new Date().toISOString().slice(0, 10),
+    keterangan, role: STATE.role, kode: STATE.kode, pin: STATE.pin
+  };
+  if (statusVal) payload.status = statusVal;
+  if (pendingFotosDetail.length) {
+    payload.fotos = pendingFotosDetail.map(f => ({ base64: f.base64, mime: f.mime, name: f.name }));
+    payload.fotoBase64 = pendingFotosDetail[0].base64;
+    payload.fotoMime = pendingFotosDetail[0].mime;
+    payload.fotoName = pendingFotosDetail[0].name;
+  }
+
+  try {
+    const res = await apiPost('addActionPlan', payload);
+    if (!res.success) throw new Error(res.error || 'Gagal menyimpan');
+
+    STATE.actionPlans.push({
+      'ID': res.id, 'Selisih ID': currentRow['ID'], 'Tanggal': payload.tanggal,
+      'Keterangan': keterangan, 'Foto ID': res.fotoId || '',
+      'Foto IDs': (res.fotoIds || (res.fotoId ? [res.fotoId] : [])).join(','),
+      'Role': STATE.role, 'Nama': res.nama, 'Waktu': res.waktu
+    });
+    if (statusVal) {
+      currentRow['Status'] = statusVal;
+      const idx = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
+      if (idx > -1) STATE.data[idx]['Status'] = statusVal;
+    }
+
+    document.getElementById('detail-status').value = '';
+    document.getElementById('detail-keterangan').value = '';
+    pendingFotosDetail = [];
+    renderFotoGridDetail();
+
+    renderModalBody(); // refresh judul/status/komentar di modal yang lagi kebuka
+    render();          // refresh tabel & KPI di belakang modal
+  } catch (e) {
+    errEl.textContent = String(e.message || e);
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Simpan Update';
+  }
 }
 
 // ---- Modal Tambah Data (khusus Kacab) ----
