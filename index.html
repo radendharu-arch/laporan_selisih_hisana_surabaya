@@ -119,7 +119,7 @@
   #modal .btn-close { background:var(--abu-bg); color:var(--text); }
   #modal .btn-save { background:var(--biru); color:#fff; }
 
-  #loading, #err-banner { text-align:center; padding:30px; }
+  #loading, #err-banner { text-align:center; padding:30px; display:none; }
   #err-banner { color:var(--merah); display:none; }
 
   /* --- MODAL TAMBAH DATA (khusus Kacab) --- */
@@ -220,6 +220,10 @@
       <option>GoFood</option>
       <option>GrabFood</option>
       <option>ShopeeFood</option>
+      <option>Qpon</option>
+      <option>TikTokGo</option>
+      <option>QPON</option>
+      <option>TikTokGo</option>
     </select>
 
     <label class="field-label">Omzet POS (Rp)</label>
@@ -532,9 +536,11 @@ function openModal(idx) {
   `).join('') : '<div class="comment" style="color:var(--abu)">Belum ada action plan.</div>';
 
   document.getElementById('overlay').style.display = 'flex';
+  pushModalHistory();
 }
 function closeModal() {
   document.getElementById('overlay').style.display = 'none';
+  popModalHistory();
 }
 
 // ---- Modal Tambah Data (khusus Kacab) ----
@@ -553,10 +559,31 @@ function openAddModal() {
   renderFotoGrid();
   document.getElementById('add-err').style.display = 'none';
   document.getElementById('overlay-add').style.display = 'flex';
+  pushModalHistory();
 }
 function closeAddModal() {
   document.getElementById('overlay-add').style.display = 'none';
+  popModalHistory();
 }
+
+// --- Biar tombol/gesture "back" di HP (termasuk pas udah diinstall jadi app)
+// nutup modal yang lagi kebuka dulu, bukan langsung keluar dari aplikasi. ---
+let modalHistoryPushed = false;
+function pushModalHistory() {
+  history.pushState({ hisanaModal: true }, '');
+  modalHistoryPushed = true;
+}
+function popModalHistory() {
+  if (modalHistoryPushed) {
+    modalHistoryPushed = false;
+    history.back();
+  }
+}
+window.addEventListener('popstate', function () {
+  modalHistoryPushed = false;
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('overlay-add').style.display = 'none';
+});
 
 async function submitDataSelisih() {
   const tanggal = document.getElementById('add-tanggal').value;
