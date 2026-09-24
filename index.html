@@ -53,7 +53,9 @@
   .kpi .value { font-size:20px; font-weight:700; margin-top:4px; }
 
   .filters { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
-  .filters select { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+  .filters select, .filters input[type=date] { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; background:#fff; font-family:inherit; }
+  .filters .tgl { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--abu); }
+  .filters .btn-reset { background:var(--abu-bg); color:var(--text); border:none; padding:9px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
 
   .table-wrap { width:100%; }
   table { width:100%; border-collapse:collapse; background:var(--card); border-radius:10px; overflow:hidden; border:1px solid var(--border); }
@@ -74,7 +76,9 @@
     header { padding:12px 14px; }
     .kpis { grid-template-columns: repeat(2, 1fr); gap:8px; }
     .filters { flex-direction:column; align-items:stretch; }
-    .filters select, .filters .btn-tambah { width:100%; min-height:44px; }
+    .filters select, .filters .btn-tambah, .filters .btn-reset, .filters input[type=date] { width:100%; min-height:44px; }
+    .filters .tgl { justify-content:space-between; }
+    .filters .tgl input { width:70%; }
 
     table thead { display:none; }
     table, tbody, tr, td { display:block; width:100%; }
@@ -134,6 +138,9 @@
   .btn-foto { flex:1; padding:10px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:13px; font-weight:600; cursor:pointer; }
   .btn-foto:active { background:var(--abu-bg); }
   #add-err { color:var(--merah); font-size:12px; margin-top:6px; display:none; }
+  #upload-banner { display:none; position:fixed; left:12px; right:12px; bottom:12px; z-index:30; max-width:520px; margin:0 auto; background:#1e293b; color:#fff; padding:12px 14px; border-radius:10px; font-size:13px; align-items:center; justify-content:space-between; gap:10px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  #upload-banner.err { background:var(--merah); }
+  #upload-banner button { background:#fff; color:var(--text); border:none; padding:7px 12px; border-radius:6px; font-weight:600; cursor:pointer; }
   .btn-tambah { background:var(--biru); color:#fff; border:none; padding:9px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
 </style>
 </head>
@@ -197,7 +204,7 @@
       <tbody id="tbody"></tbody>
     </table>
     </div>
-    <div id="empty" style="display:none;">Belum ada data selisih untuk ditampilkan.</div>
+    <div id="empty" style="display:none;">Belum ada data selisih pada rentang tanggal ini.</div>
   </div>
 
 </main>
@@ -211,15 +218,14 @@
     <div id="modal-followup" style="display:none;">
       <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
       <div id="detail-status-wrap">
-        <label class="field-label">Diketahui</label>
+        <label class="field-label">Diketahui (wajib)</label>
         <select id="detail-status">
-          <option value="">-- Tidak diubah --</option>
+          <option value="">-- Pilih --</option>
           <option value="Diketahui">Diketahui</option>
-          <option value="Belum Diketahui">Belum Diketahui</option>
         </select>
       </div>
 
-      <label class="field-label" id="detail-keterangan-label">Keterangan / Action Plan Tambahan</label>
+      <label class="field-label">Keterangan / Action Plan Tambahan (opsional)</label>
       <textarea id="detail-keterangan" placeholder="Tulis update/tindak lanjutnya..."></textarea>
 
       <label class="field-label">Bukti Foto Tambahan (opsional, bisa lebih dari 1)</label>
@@ -232,6 +238,7 @@
       <div id="detail-foto-grid" class="foto-grid"></div>
       <div id="detail-foto-status" style="font-size:11px;color:var(--abu);margin-top:4px;"></div>
 
+      <div style="font-size:11px;color:var(--abu);margin-top:10px;">Setelah disimpan, laporan ini tidak bisa diubah lagi.</div>
       <div id="detail-err" style="color:var(--merah);font-size:12px;display:none;margin-top:8px;"></div>
 
       <div class="modal-actions" style="margin-top:12px;">
@@ -295,13 +302,23 @@
   </div>
 </div>
 
+<div id="upload-banner"></div>
+
 <script>
 // ======= GANTI DENGAN URL WEB APP APPS SCRIPT LO (yang berakhiran /exec) =======
 const API_URL = 'https://script.google.com/macros/s/AKfycbxqvMcS_OphjtjoBtAok3u1t6vPx2ul2p5VKCmOiQPuBxBU0rvIT_VBt1byGA4xL7fe/exec';
 // =================================================================================
+// Baca balasan server sebagai JSON; kalau yang datang halaman HTML (mis. error/izin Apps Script),
+// lempar error yang isinya jelas biar penyebabnya kelihatan, bukan cuma "gagal".
+async function readJson(res) {
+  const txt = await res.text();
+  try { return JSON.parse(txt); } catch (e) {
+    throw new Error('Balasan server bukan JSON: ' + txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140));
+  }
+}
 async function apiGet(action) {
   const res = await fetch(API_URL + '?action=' + action);
-  return res.json();
+  return readJson(res);
 }
 async function apiPost(action, body) {
   const res = await fetch(API_URL + '?action=' + action, {
@@ -309,7 +326,7 @@ async function apiPost(action, body) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain menghindari CORS preflight
     body: JSON.stringify(body)
   });
-  return res.json();
+  return readJson(res);
 }
 
 let STATE = {
@@ -321,8 +338,18 @@ let STATE = {
   kacab: [],
   data: [],
   actionPlans: [],
-  filterKacab: 'ALL'
+  filterKacab: 'ALL',
+  filterDari: defaultDari(), // default: 30 hari terakhir; data lama ditarik lewat filter tanggal
+  filterSampai: ''
 };
+
+// Tanggal 30 hari lalu (zona waktu Jakarta) format YYYY-MM-DD.
+function defaultDari() {
+  return new Date(Date.now() - 30 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+function saveSession() {
+  sessionStorage.setItem('selisih_session', JSON.stringify({ role: STATE.role, kode: STATE.kode, nama: STATE.nama, pin: STATE.pin }));
+}
 
 function pickRole(role) {
   STATE.role = role;
@@ -333,13 +360,11 @@ function pickRole(role) {
   document.getElementById('area-select-wrap').style.display = role === 'AM' ? 'block' : 'none';
 }
 
-let prefetchedData = null; // hasil getData() pas isi dropdown login, dipakai ulang biar nggak fetch 2x
-
 async function populateKacabDropdown() {
   try {
-    const res = await apiGet('getData');
-    prefetchedData = res;
-    STATE.gerai = res.gerai || [];
+    // Layar login cuma butuh daftar kacab & area (tanpa PIN, tanpa data laporan).
+    const res = await apiGet('getLogin');
+    if (res.error) throw new Error(res.error);
     STATE.kacab = res.kacab || [];
     STATE.area = res.area || [];
     const sel = document.getElementById('kacab-select');
@@ -352,21 +377,36 @@ async function populateKacabDropdown() {
   }
 }
 
+// Login = 1 panggilan: getData sekalian ngecek PIN dan mengembalikan data sesuai role.
 async function doLogin() {
   const pin = document.getElementById('pin-input').value.trim();
   let kode = 'KEUANGAN';
   if (STATE.role === 'KACAB') kode = document.getElementById('kacab-select').value;
   else if (STATE.role === 'AM') kode = document.getElementById('area-select').value;
   if (!pin) return;
-  const res = await apiPost('verifyPin', { role: STATE.role, kode, pin });
-  if (res.valid) {
-    STATE.kode = kode;
-    STATE.pin = pin;
-    STATE.nama = res.nama;
-    sessionStorage.setItem('selisih_session', JSON.stringify(STATE));
-    enterDashboard();
-  } else {
-    document.getElementById('login-error').style.display = 'block';
+  const btn = document.querySelector('#login button.submit');
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Masuk...';
+  try {
+    const res = await apiPost('getData', {
+      role: STATE.role, kode, pin, dari: STATE.filterDari || '', sampai: STATE.filterSampai || ''
+    });
+    if (res.success) {
+      STATE.kode = kode;
+      STATE.pin = pin;
+      STATE.nama = res.nama;
+      saveSession();
+      enterDashboard(res);
+    } else {
+      errEl.textContent = res.error === 'PIN salah' ? 'PIN salah, coba lagi.' : (res.error || 'Gagal masuk, coba lagi.');
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = 'Gagal terhubung, coba lagi.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Masuk';
   }
 }
 
@@ -381,19 +421,17 @@ function roleLabel() {
   return 'Keuangan';
 }
 
-function enterDashboard() {
+function enterDashboard(res) {
   document.getElementById('login').style.display = 'none';
   document.getElementById('userbar').style.display = 'flex';
   document.getElementById('who').textContent = roleLabel() + (STATE.nama ? ' - ' + STATE.nama : '');
 
-  if (prefetchedData) {
-    // Sudah ada data segar dari fetch buat isi dropdown login barusan, langsung
-    // dipakai biar nggak nge-fetch getData dua kali pas dashboard kebuka.
+  if (res) {
+    // Data sudah ikut datang dari panggilan login, langsung ditampilkan.
     document.getElementById('loading').style.display = 'none';
-    applyLoadedData(prefetchedData);
-    prefetchedData = null;
+    applyLoadedData(res);
   } else {
-    loadAll();
+    loadAll(); // sesi lama (halaman di-refresh) -> ambil data lagi pakai PIN yang tersimpan
   }
 }
 
@@ -408,18 +446,69 @@ function applyLoadedData(res) {
   render();
 }
 
+// Ambil data sesuai role + rentang tanggal aktif. Server yang memfilter, PIN wajib.
+function fetchScoped() {
+  return apiPost('getData', {
+    role: STATE.role, kode: STATE.kode, pin: STATE.pin,
+    dari: STATE.filterDari || '', sampai: STATE.filterSampai || ''
+  });
+}
+
 async function loadAll() {
   document.getElementById('loading').style.display = 'block';
   document.getElementById('err-banner').style.display = 'none';
   document.getElementById('dash').style.display = 'none';
   try {
-    const res = await apiGet('getData');
+    const res = await fetchScoped();
+    if (!res.success) {
+      if (res.error === 'PIN salah') { logout(); return; }
+      throw new Error(res.error || 'Gagal memuat');
+    }
     document.getElementById('loading').style.display = 'none';
     applyLoadedData(res);
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('err-banner').style.display = 'block';
   }
+}
+
+// Ganti rentang tanggal -> tarik ulang dari server (data di luar rentang memang tidak dikirim).
+let reqSeq = 0;
+async function refreshData() {
+  const seq = ++reqSeq;
+  const loading = document.getElementById('loading');
+  loading.style.display = 'block';
+  document.getElementById('err-banner').style.display = 'none';
+  try {
+    const res = await fetchScoped();
+    if (seq !== reqSeq) return; // ada permintaan yang lebih baru, abaikan yang ini
+    if (!res.success) {
+      if (res.error === 'PIN salah') { logout(); return; }
+      throw new Error(res.error || 'Gagal memuat');
+    }
+    STATE.gerai = res.gerai || STATE.gerai;
+    STATE.kacab = res.kacab || STATE.kacab;
+    STATE.data = res.data || [];
+    STATE.actionPlans = res.actionPlans || [];
+    loading.style.display = 'none';
+    render();
+  } catch (e) {
+    if (seq !== reqSeq) return;
+    loading.style.display = 'none';
+    document.getElementById('err-banner').style.display = 'block';
+  }
+}
+function onTanggalChange() {
+  STATE.filterDari = document.getElementById('filter-dari').value;
+  STATE.filterSampai = document.getElementById('filter-sampai').value;
+  refreshData();
+}
+function setRentang(mode) {
+  STATE.filterDari = mode === 'semua' ? '' : defaultDari();
+  STATE.filterSampai = '';
+  document.getElementById('filter-dari').value = STATE.filterDari;
+  document.getElementById('filter-sampai').value = '';
+  refreshData();
 }
 
 // Kode Area buat sebuah Kode Gerai, dicari dari daftar STATE.gerai (dikirim getData).
@@ -430,11 +519,12 @@ function areaOfGerai(kodeGerai) {
 
 function renderFilters() {
   const box = document.getElementById('filters');
+  const sel = k => String(STATE.filterKacab) === String(k) ? 'selected' : '';
   let html = '';
   if (STATE.role === 'KEUANGAN') {
     html += `<select id="filter-kacab" onchange="STATE.filterKacab=this.value; render()">
-      <option value="ALL">Semua Kacab</option>
-      ${STATE.kacab.map(k => `<option value="${k.kode}">${k.kode} - ${k.nama}</option>`).join('')}
+      <option value="ALL" ${sel('ALL')}>Semua Kacab</option>
+      ${STATE.kacab.map(k => `<option value="${k.kode}" ${sel(k.kode)}>${k.kode} - ${k.nama}</option>`).join('')}
     </select>`;
   }
   if (STATE.role === 'AM') {
@@ -443,12 +533,20 @@ function renderFilters() {
       STATE.gerai.some(g => String(g['Kode Kacab']) === String(k.kode) && areaOfGerai(g['Kode Gerai']) === String(STATE.kode))
     );
     html += `<select id="filter-kacab" onchange="STATE.filterKacab=this.value; render()">
-      <option value="ALL">Semua Kacab (Area ${STATE.kode})</option>
-      ${kacabDiArea.map(k => `<option value="${k.kode}">${k.kode} - ${k.nama}</option>`).join('')}
+      <option value="ALL" ${sel('ALL')}>Semua Kacab (Area ${STATE.kode})</option>
+      ${kacabDiArea.map(k => `<option value="${k.kode}" ${sel(k.kode)}>${k.kode} - ${k.nama}</option>`).join('')}
     </select>`;
   }
+  // Filter tanggal (semua role). Default 30 hari terakhir; data yang lebih lama ditarik dari server.
+  html += `<label class="tgl">Dari <input type="date" id="filter-dari" value="${STATE.filterDari || ''}" onchange="onTanggalChange()"></label>
+    <label class="tgl">Sampai <input type="date" id="filter-sampai" value="${STATE.filterSampai || ''}" onchange="onTanggalChange()"></label>
+    <button class="btn-reset" onclick="setRentang('30')">30 Hari Terakhir</button>
+    <button class="btn-reset" onclick="setRentang('semua')">Semua</button>`;
   if (STATE.role === 'KACAB') {
     html += `<button class="btn-tambah" onclick="openAddModal()">+ Tambah Data</button>`;
+  }
+  if (STATE.role === 'KEUANGAN') {
+    html += `<button class="btn-tambah" onclick="downloadCsv()">&#11015; Download CSV</button>`;
   }
   box.innerHTML = html;
 }
@@ -465,7 +563,7 @@ function scopedRows() {
   } else if (STATE.filterKacab !== 'ALL') {
     rows = rows.filter(r => String(r['Kode Kacab']) === String(STATE.filterKacab));
   }
-  return rows;
+  return rows; // rentang tanggal sudah difilter di server (lihat refreshData)
 }
 
 // Kolom "Status" di sheet sekarang dipakai buat penanda "Diketahui" oleh AM.
@@ -475,6 +573,36 @@ const STATUS_BELUM = 'Belum Diketahui';
 function statusFor(row) {
   if (row['Status'] === STATUS_DIKETAHUI) return { label: 'Diketahui', cls: 'hijau' };
   return { label: STATUS_BELUM, cls: 'merah' };
+}
+
+// Download laporan (sesuai filter Kacab yang lagi aktif) sebagai CSV. Pemisah titik koma +
+// BOM UTF-8 biar langsung kebuka rapi per kolom di Excel dengan pengaturan regional Indonesia.
+function csvCell(v) {
+  v = v == null ? '' : String(v);
+  return /[";\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function downloadCsv() {
+  const rows = scopedRows();
+  const ket = (id, role) => STATE.actionPlans
+    .filter(a => String(a['Selisih ID']) === String(id) && a['Role'] === role)
+    .map(a => a['Keterangan']).filter(Boolean).join(' | ');
+  const header = ['ID', 'Tanggal', 'Kode Kacab', 'Kode Gerai', 'Nama Gerai', 'Platform',
+    'Omzet POS', 'Omzet Platform', 'Selisih Rp', 'Selisih Persen', 'Diketahui AM',
+    'Keterangan Kacab', 'Keterangan AM'];
+  const lines = [header].concat(rows.map(r => [
+    r['ID'], fmtTanggal(r['Tanggal']), r['Kode Kacab'], r['Kode Gerai'], r['Nama Gerai'], r['Platform'],
+    Number(r['Omzet POS']) || 0, Number(r['Omzet Platform']) || 0, Number(r['Selisih Rp']) || 0,
+    Number(r['Selisih Persen'] || 0).toFixed(1).replace('.', ','),
+    statusFor(r).label, ket(r['ID'], 'KACAB'), ket(r['ID'], 'AM')
+  ])).map(cols => cols.map(csvCell).join(';'));
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'laporan_selisih_pos_platform_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function fmtRp(n) {
@@ -599,19 +727,15 @@ function openModal(idx) {
   currentRow = scopedRows()[idx];
   renderModalBody();
 
-  // Kacab boleh update status/keterangan/foto buat baris gerai kacab-nya sendiri.
-  // AM boleh update status/keterangan/foto buat baris gerai mana pun yang ada di
-  // Kode Area dia (lintas kacab, karena satu AM bisa mengawasi beberapa kacab sekaligus).
-  // Keuangan cuma bisa lihat (read-only), gak dapet form ini.
+  // Cuma AM (untuk baris di Kode Area dia, lintas kacab) yang dapet form update, dan cuma
+  // sekali: begitu AM simpan (status jadi Diketahui), laporan terkunci dan popup-nya
+  // jadi tampilan baca saja. Kacab dan Keuangan cuma bisa lihat laporannya (read-only).
   const bisaFollowUp =
-    (STATE.role === 'KACAB' && String(currentRow['Kode Kacab']) === String(STATE.kode)) ||
-    (STATE.role === 'AM' && areaOfGerai(currentRow['Kode Gerai']) === String(STATE.kode));
+    STATE.role === 'AM' &&
+    areaOfGerai(currentRow['Kode Gerai']) === String(STATE.kode) &&
+    currentRow['Status'] !== STATUS_DIKETAHUI;
   document.getElementById('modal-followup').style.display = bisaFollowUp ? 'block' : 'none';
   if (bisaFollowUp) {
-    // Kacab: tanpa status, keterangan wajib. AM: isi "Diketahui", keterangan opsional.
-    document.getElementById('detail-status-wrap').style.display = STATE.role === 'AM' ? 'block' : 'none';
-    document.getElementById('detail-keterangan-label').textContent =
-      STATE.role === 'KACAB' ? 'Keterangan / Action Plan Tambahan (wajib)' : 'Keterangan / Action Plan Tambahan (opsional)';
     document.getElementById('detail-status').value = '';
     document.getElementById('detail-keterangan').value = '';
     document.getElementById('detail-foto-camera').value = '';
@@ -687,13 +811,8 @@ async function submitFollowUp() {
   const statusVal = document.getElementById('detail-status').value;
   const keterangan = document.getElementById('detail-keterangan').value.trim();
   const errEl = document.getElementById('detail-err');
-  if (STATE.role === 'KACAB' && !keterangan) {
-    errEl.textContent = 'Keterangan wajib diisi ya.';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (!statusVal && !keterangan && !pendingFotosDetail.length) {
-    errEl.textContent = 'Isi Diketahui, keterangan, atau foto dulu ya.';
+  if (!statusVal) {
+    errEl.textContent = 'Pilih Diketahui dulu ya.';
     errEl.style.display = 'block';
     return;
   }
@@ -705,7 +824,7 @@ async function submitFollowUp() {
     selisihId: currentRow['ID'], tanggal: new Date().toISOString().slice(0, 10),
     keterangan, role: STATE.role, kode: STATE.kode, pin: STATE.pin
   };
-  if (statusVal && STATE.role === 'AM') payload.status = statusVal;
+  payload.status = statusVal;
   if (pendingFotosDetail.length) {
     payload.fotos = pendingFotosDetail.map(f => ({ base64: f.base64, mime: f.mime, name: f.name }));
     payload.fotoBase64 = pendingFotosDetail[0].base64;
@@ -715,7 +834,19 @@ async function submitFollowUp() {
 
   try {
     const res = await apiPost('addActionPlan', payload);
-    if (!res.success) throw new Error(res.error || 'Gagal menyimpan');
+    if (!res.success) {
+      if (res.locked) {
+        // Ternyata sudah keburu diketahui (mis. disimpan dari perangkat lain): kunci tampilan lokal.
+        currentRow['Status'] = STATUS_DIKETAHUI;
+        const i2 = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
+        if (i2 > -1) STATE.data[i2]['Status'] = STATUS_DIKETAHUI;
+        alert(res.error);
+        closeModal();
+        render();
+        return;
+      }
+      throw new Error(res.error || 'Gagal menyimpan');
+    }
 
     STATE.actionPlans.push({
       'ID': res.id, 'Selisih ID': currentRow['ID'], 'Tanggal': payload.tanggal,
@@ -723,19 +854,13 @@ async function submitFollowUp() {
       'Foto IDs': (res.fotoIds || (res.fotoId ? [res.fotoId] : [])).join(','),
       'Role': STATE.role, 'Nama': res.nama, 'Waktu': res.waktu
     });
-    if (statusVal && STATE.role === 'AM') {
-      currentRow['Status'] = statusVal;
-      const idx = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
-      if (idx > -1) STATE.data[idx]['Status'] = statusVal;
-    }
+    currentRow['Status'] = statusVal;
+    const idx = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
+    if (idx > -1) STATE.data[idx]['Status'] = statusVal;
 
-    document.getElementById('detail-status').value = '';
-    document.getElementById('detail-keterangan').value = '';
     pendingFotosDetail = [];
-    renderFotoGridDetail();
-
-    renderModalBody(); // refresh judul/status/komentar di modal yang lagi kebuka
-    render();          // refresh tabel & KPI di belakang modal
+    closeModal();  // langsung tertutup; laporan ini sekarang terkunci
+    render();      // refresh tabel & KPI
   } catch (e) {
     errEl.textContent = String(e.message || e);
     errEl.style.display = 'block';
@@ -785,6 +910,53 @@ window.addEventListener('popstate', function () {
   document.getElementById('overlay-add').style.display = 'none';
 });
 
+// Upload foto di belakang layar: data laporan + keterangan sudah tersimpan duluan (cepat),
+// foto menyusul lewat action 'addFotoPlan'. Kalau gagal, muncul banner + tombol "Coba lagi".
+let fotoJobs = [];
+function renderUploadBanner() {
+  const el = document.getElementById('upload-banner');
+  const up = fotoJobs.filter(j => j.state === 'uploading').length;
+  const err = fotoJobs.filter(j => j.state === 'error').length;
+  if (!up && !err) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.className = err ? 'err' : '';
+  el.innerHTML = err
+    ? `<span>${err} foto gagal terupload.</span><button onclick="retryFotoJobs()">Coba lagi</button>`
+    : `<span>Mengupload foto... jangan tutup halaman dulu.</span>`;
+}
+async function runFotoJob(job) {
+  job.state = 'uploading';
+  renderUploadBanner();
+  try {
+    const res = await apiPost('addFotoPlan', {
+      planId: job.planId, selisihId: job.selisihId,
+      fotos: job.fotos.map(f => ({ base64: f.base64, mime: f.mime, name: f.name })),
+      role: STATE.role, kode: STATE.kode, pin: STATE.pin
+    });
+    if (!res.success) throw new Error(res.error || 'Gagal upload foto');
+    const plan = STATE.actionPlans.find(a => String(a['ID']) === String(job.planId));
+    if (plan) {
+      plan['Foto ID'] = (res.fotoIds || []).join(',');
+      plan['Foto IDs'] = plan['Foto ID'];
+    }
+    fotoJobs = fotoJobs.filter(j => j !== job);
+  } catch (e) {
+    job.state = 'error';
+  }
+  renderUploadBanner();
+}
+function startFotoJob(planId, selisihId, fotos) {
+  const job = { planId, selisihId, fotos, state: 'uploading' };
+  fotoJobs.push(job);
+  runFotoJob(job);
+}
+function retryFotoJobs() {
+  fotoJobs.filter(j => j.state === 'error').forEach(runFotoJob);
+}
+window.addEventListener('beforeunload', function (e) {
+  if (fotoJobs.length) { e.preventDefault(); e.returnValue = ''; }
+});
+
 async function submitDataSelisih() {
   const tanggal = document.getElementById('add-tanggal').value;
   const geraiSel = document.getElementById('add-gerai');
@@ -806,12 +978,15 @@ async function submitDataSelisih() {
   const btn = document.getElementById('btn-save-add');
   btn.disabled = true;
   btn.textContent = 'Menyimpan...';
+  errEl.style.display = 'none'; // hapus pesan error dari percobaan sebelumnya
+  let saved = false;            // true begitu server konfirmasi data tersimpan
   try {
     const res = await apiPost('addDataSelisih', {
       tanggal, gerai: geraiKode, gerainama: geraiNama, platform,
-      omzetPos, omzetPlatform, status, role: STATE.role, kode: STATE.kode, pin: STATE.pin
+      omzetPos, omzetPlatform, status, keterangan, role: STATE.role, kode: STATE.kode, pin: STATE.pin
     });
     if (res.success) {
+      saved = true;
       STATE.data.push({
         'ID': res.id, 'Tanggal': tanggal, 'Kode Kacab': STATE.kode,
         'Kode Gerai': geraiKode, 'Nama Gerai': geraiNama, 'Platform': platform,
@@ -819,23 +994,30 @@ async function submitDataSelisih() {
         'Selisih Rp': res.selisihRp, 'Selisih Persen': res.selisihPersen,
         'Status': res.status || status
       });
+      const fotos = pendingFotosAdd.slice();
 
-      // Kalau kacab langsung isi keterangan/action plan atau bukti foto pas nambah data,
-      // kirim juga sebagai action plan pertama untuk baris ini.
-      if (keterangan || pendingFotosAdd.length) {
+      if (res.combined) {
+        // Backend baru: laporan + keterangan sudah tersimpan dalam 1 panggilan.
+        if (res.plan) {
+          STATE.actionPlans.push({
+            'ID': res.plan.id, 'Selisih ID': res.id, 'Tanggal': tanggal,
+            'Keterangan': keterangan, 'Foto ID': '', 'Foto IDs': '',
+            'Role': STATE.role, 'Nama': res.plan.nama, 'Waktu': res.plan.waktu
+          });
+          if (fotos.length) startFotoJob(res.plan.id, res.id, fotos); // foto menyusul di belakang layar
+        }
+      } else if (keterangan || fotos.length) {
+        // Backend lama (belum di-update): pakai alur lama, keterangan + foto lewat addActionPlan.
         try {
           const planPayload = {
             selisihId: res.id, tanggal, keterangan,
             role: STATE.role, kode: STATE.kode, pin: STATE.pin
           };
-          if (pendingFotosAdd.length) {
-            // Array foto (bisa lebih dari 1) — perlu backend addActionPlan yang sudah
-            // diupdate untuk menyimpan semua foto dan mengembalikan fotoIds (array).
-            planPayload.fotos = pendingFotosAdd.map(f => ({ base64: f.base64, mime: f.mime, name: f.name }));
-            // Field lama tetap dikirim (foto pertama) supaya backend versi lama masih jalan.
-            planPayload.fotoBase64 = pendingFotosAdd[0].base64;
-            planPayload.fotoMime = pendingFotosAdd[0].mime;
-            planPayload.fotoName = pendingFotosAdd[0].name;
+          if (fotos.length) {
+            planPayload.fotos = fotos.map(f => ({ base64: f.base64, mime: f.mime, name: f.name }));
+            planPayload.fotoBase64 = fotos[0].base64;
+            planPayload.fotoMime = fotos[0].mime;
+            planPayload.fotoName = fotos[0].name;
           }
           const planRes = await apiPost('addActionPlan', planPayload);
           if (planRes.success) {
@@ -848,8 +1030,7 @@ async function submitDataSelisih() {
             });
           }
         } catch (e) {
-          // Data selisih sudah tersimpan; kalau action plan awal gagal terkirim, kacab
-          // masih bisa menambahkannya lagi lewat modal detail baris.
+          // Data selisih sudah tersimpan; keterangan/foto awal gagal terkirim.
         }
       }
       closeAddModal();
@@ -859,8 +1040,15 @@ async function submitDataSelisih() {
       errEl.style.display = 'block';
     }
   } catch (e) {
-    errEl.textContent = 'Gagal menyimpan, coba lagi.';
-    errEl.style.display = 'block';
+    if (saved) {
+      // Data SUDAH tersimpan di server; yang error cuma tampilan setelahnya. Jangan tampilkan
+      // "gagal" (nanti kacab klik lagi dan datanya dobel), cukup tutup form dan muat ulang tabel.
+      console.error(e);
+      try { closeAddModal(); render(); } catch (e2) { console.error(e2); }
+    } else {
+      errEl.textContent = 'Gagal menyimpan: ' + (e && e.message ? e.message : e);
+      errEl.style.display = 'block';
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = 'Simpan';
@@ -872,9 +1060,12 @@ async function submitDataSelisih() {
   const saved = sessionStorage.getItem('selisih_session');
   if (saved) {
     try {
-      STATE = JSON.parse(saved);
-      enterDashboard(); // sesi sudah ada -> langsung load dashboard, sekali fetch aja
-      return;
+      const sv = JSON.parse(saved);
+      STATE.role = sv.role; STATE.kode = sv.kode; STATE.nama = sv.nama; STATE.pin = sv.pin;
+      if (STATE.pin) {
+        enterDashboard(); // sesi sudah ada -> ambil data lagi pakai PIN tersimpan, sekali fetch aja
+        return;
+      }
     } catch (e) {}
   }
   populateKacabDropdown(); // belum login -> cuma perlu isi dropdown kacab di layar login
