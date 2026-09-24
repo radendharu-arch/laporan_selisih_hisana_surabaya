@@ -156,12 +156,18 @@
     <h2>Masuk</h2>
     <div class="roles">
       <button class="role-btn active" id="btn-kacab" onclick="pickRole('KACAB')">Kacab</button>
+      <button class="role-btn" id="btn-am" onclick="pickRole('AM')">AM</button>
       <button class="role-btn" id="btn-keuangan" onclick="pickRole('KEUANGAN')">Keuangan</button>
     </div>
 
     <div id="kacab-select-wrap">
       <label>Pilih Kacab</label>
       <select id="kacab-select"><option>Memuat...</option></select>
+    </div>
+
+    <div id="area-select-wrap" style="display:none;">
+      <label>Pilih Area</label>
+      <select id="area-select"><option>Memuat...</option></select>
     </div>
 
     <label>PIN</label>
@@ -185,7 +191,7 @@
         <tr>
           <th>Tanggal</th><th>Gerai</th><th>Platform</th>
           <th>Omzet POS</th><th>Omzet Platform</th>
-          <th>Selisih</th><th>Status</th>
+          <th>Selisih</th><th>Diketahui AM</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -204,14 +210,16 @@
 
     <div id="modal-followup" style="display:none;">
       <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
-      <label class="field-label">Update Status</label>
-      <select id="detail-status">
-        <option value="">-- Status tidak diubah --</option>
-        <option value="Belum Terselesaikan">Belum Terselesaikan</option>
-        <option value="Selesai">Selesai</option>
-      </select>
+      <div id="detail-status-wrap">
+        <label class="field-label">Diketahui</label>
+        <select id="detail-status">
+          <option value="">-- Tidak diubah --</option>
+          <option value="Diketahui">Diketahui</option>
+          <option value="Belum Diketahui">Belum Diketahui</option>
+        </select>
+      </div>
 
-      <label class="field-label">Keterangan / Action Plan Tambahan (opsional)</label>
+      <label class="field-label" id="detail-keterangan-label">Keterangan / Action Plan Tambahan</label>
       <textarea id="detail-keterangan" placeholder="Tulis update/tindak lanjutnya..."></textarea>
 
       <label class="field-label">Bukti Foto Tambahan (opsional, bisa lebih dari 1)</label>
@@ -263,13 +271,7 @@
     <label class="field-label">Omzet Platform (Rp)</label>
     <input type="number" id="add-platform-omzet" inputmode="numeric" placeholder="0">
 
-    <label class="field-label">Status</label>
-    <select id="add-status">
-      <option value="Belum Terselesaikan">Belum Terselesaikan</option>
-      <option value="Selesai">Selesai</option>
-    </select>
-
-    <label class="field-label">Keterangan / Action Plan (opsional)</label>
+    <label class="field-label">Keterangan / Action Plan (wajib)</label>
     <textarea id="add-keterangan" placeholder="Tulis keterangan / rencana tindak lanjut kalau ada..."></textarea>
 
     <label class="field-label">Bukti Foto (opsional, bisa lebih dari 1)</label>
@@ -325,8 +327,10 @@ let STATE = {
 function pickRole(role) {
   STATE.role = role;
   document.getElementById('btn-kacab').classList.toggle('active', role === 'KACAB');
+  document.getElementById('btn-am').classList.toggle('active', role === 'AM');
   document.getElementById('btn-keuangan').classList.toggle('active', role === 'KEUANGAN');
   document.getElementById('kacab-select-wrap').style.display = role === 'KACAB' ? 'block' : 'none';
+  document.getElementById('area-select-wrap').style.display = role === 'AM' ? 'block' : 'none';
 }
 
 let prefetchedData = null; // hasil getData() pas isi dropdown login, dipakai ulang biar nggak fetch 2x
@@ -337,16 +341,22 @@ async function populateKacabDropdown() {
     prefetchedData = res;
     STATE.gerai = res.gerai || [];
     STATE.kacab = res.kacab || [];
+    STATE.area = res.area || [];
     const sel = document.getElementById('kacab-select');
     sel.innerHTML = STATE.kacab.map(k => `<option value="${k.kode}">${k.kode} - ${k.nama}</option>`).join('');
+    const selArea = document.getElementById('area-select');
+    selArea.innerHTML = STATE.area.map(a => `<option value="${a.kode}">${a.kode} - ${a.nama}</option>`).join('');
   } catch (e) {
     document.getElementById('kacab-select').innerHTML = '<option>Gagal memuat</option>';
+    document.getElementById('area-select').innerHTML = '<option>Gagal memuat</option>';
   }
 }
 
 async function doLogin() {
   const pin = document.getElementById('pin-input').value.trim();
-  const kode = STATE.role === 'KACAB' ? document.getElementById('kacab-select').value : 'KEUANGAN';
+  let kode = 'KEUANGAN';
+  if (STATE.role === 'KACAB') kode = document.getElementById('kacab-select').value;
+  else if (STATE.role === 'AM') kode = document.getElementById('area-select').value;
   if (!pin) return;
   const res = await apiPost('verifyPin', { role: STATE.role, kode, pin });
   if (res.valid) {
@@ -365,11 +375,16 @@ function logout() {
   location.reload();
 }
 
+function roleLabel() {
+  if (STATE.role === 'KACAB') return 'Kacab ' + STATE.kode;
+  if (STATE.role === 'AM') return 'AM ' + STATE.kode;
+  return 'Keuangan';
+}
+
 function enterDashboard() {
   document.getElementById('login').style.display = 'none';
   document.getElementById('userbar').style.display = 'flex';
-  document.getElementById('who').textContent =
-    (STATE.role === 'KACAB' ? 'Kacab ' + STATE.kode : 'Keuangan') + (STATE.nama ? ' - ' + STATE.nama : '');
+  document.getElementById('who').textContent = roleLabel() + (STATE.nama ? ' - ' + STATE.nama : '');
 
   if (prefetchedData) {
     // Sudah ada data segar dari fetch buat isi dropdown login barusan, langsung
@@ -385,6 +400,7 @@ function enterDashboard() {
 function applyLoadedData(res) {
   STATE.gerai = res.gerai || [];
   STATE.kacab = res.kacab || [];
+  STATE.area = res.area || [];
   STATE.data = res.data || [];
   STATE.actionPlans = res.actionPlans || [];
   document.getElementById('dash').style.display = 'block';
@@ -406,6 +422,12 @@ async function loadAll() {
   }
 }
 
+// Kode Area buat sebuah Kode Gerai, dicari dari daftar STATE.gerai (dikirim getData).
+function areaOfGerai(kodeGerai) {
+  const g = STATE.gerai.find(g => String(g['Kode Gerai']) === String(kodeGerai));
+  return g ? String(g['Kode Area'] || '') : '';
+}
+
 function renderFilters() {
   const box = document.getElementById('filters');
   let html = '';
@@ -413,6 +435,16 @@ function renderFilters() {
     html += `<select id="filter-kacab" onchange="STATE.filterKacab=this.value; render()">
       <option value="ALL">Semua Kacab</option>
       ${STATE.kacab.map(k => `<option value="${k.kode}">${k.kode} - ${k.nama}</option>`).join('')}
+    </select>`;
+  }
+  if (STATE.role === 'AM') {
+    // Kacab-kacab yang punya minimal 1 gerai di area AM ini - biar filternya relevan.
+    const kacabDiArea = STATE.kacab.filter(k =>
+      STATE.gerai.some(g => String(g['Kode Kacab']) === String(k.kode) && areaOfGerai(g['Kode Gerai']) === String(STATE.kode))
+    );
+    html += `<select id="filter-kacab" onchange="STATE.filterKacab=this.value; render()">
+      <option value="ALL">Semua Kacab (Area ${STATE.kode})</option>
+      ${kacabDiArea.map(k => `<option value="${k.kode}">${k.kode} - ${k.nama}</option>`).join('')}
     </select>`;
   }
   if (STATE.role === 'KACAB') {
@@ -425,20 +457,24 @@ function scopedRows() {
   let rows = STATE.data;
   if (STATE.role === 'KACAB') {
     rows = rows.filter(r => String(r['Kode Kacab']) === String(STATE.kode));
+  } else if (STATE.role === 'AM') {
+    rows = rows.filter(r => areaOfGerai(r['Kode Gerai']) === String(STATE.kode));
+    if (STATE.filterKacab !== 'ALL') {
+      rows = rows.filter(r => String(r['Kode Kacab']) === String(STATE.filterKacab));
+    }
   } else if (STATE.filterKacab !== 'ALL') {
     rows = rows.filter(r => String(r['Kode Kacab']) === String(STATE.filterKacab));
   }
   return rows;
 }
 
-const STATUS_BADGE = {
-  'Selesai': { label: 'Selesai', cls: 'hijau' },
-  'Belum Terselesaikan': { label: 'Belum Terselesaikan', cls: 'merah' }
-};
+// Kolom "Status" di sheet sekarang dipakai buat penanda "Diketahui" oleh AM.
+// Nilai selain 'Diketahui' (kosong, 'Belum Diketahui', atau nilai lama) dianggap Belum Diketahui.
+const STATUS_DIKETAHUI = 'Diketahui';
+const STATUS_BELUM = 'Belum Diketahui';
 function statusFor(row) {
-  const status = row['Status'];
-  if (status && STATUS_BADGE[status]) return STATUS_BADGE[status];
-  return { label: status || 'Belum Terselesaikan', cls: 'merah' };
+  if (row['Status'] === STATUS_DIKETAHUI) return { label: 'Diketahui', cls: 'hijau' };
+  return { label: STATUS_BELUM, cls: 'merah' };
 }
 
 function fmtRp(n) {
@@ -474,7 +510,7 @@ function render() {
       <td data-label="Omzet POS">${fmtRp(r['Omzet POS'])}</td>
       <td data-label="Omzet Platform">${fmtRp(r['Omzet Platform'])}</td>
       <td data-label="Selisih">${fmtRp(r['Selisih Rp'])} (${Number(r['Selisih Persen']||0).toFixed(1)}%)</td>
-      <td data-label="Status"><span class="badge ${st.cls}">${st.label}</span></td>
+      <td data-label="Diketahui AM"><span class="badge ${st.cls}">${st.label}</span></td>
     </tr>`;
   }).join('');
 
@@ -485,8 +521,8 @@ function render() {
   document.getElementById('kpis').innerHTML = `
     <div class="kpi"><div class="label">Total Baris</div><div class="value">${rows.length}</div></div>
     <div class="kpi"><div class="label">Total Selisih</div><div class="value">${fmtRp(totalSelisih)}</div></div>
-    <div class="kpi"><div class="label">Selisih</div><div class="value" style="color:var(--merah)">${besar}</div></div>
-    <div class="kpi"><div class="label">Selesai</div><div class="value" style="color:var(--hijau)">${match}</div></div>
+    <div class="kpi"><div class="label">Belum Diketahui AM</div><div class="value" style="color:var(--merah)">${besar}</div></div>
+    <div class="kpi"><div class="label">Diketahui AM</div><div class="value" style="color:var(--hijau)">${match}</div></div>
   `;
 }
 
@@ -563,11 +599,19 @@ function openModal(idx) {
   currentRow = scopedRows()[idx];
   renderModalBody();
 
-  // Cuma Kacab yang boleh update status/tambah keterangan & foto susulan, dan cuma buat
-  // gerai di kacab dia sendiri (bukan punya kacab lain, dan bukan buat role Keuangan).
-  const bisaFollowUp = STATE.role === 'KACAB' && String(currentRow['Kode Kacab']) === String(STATE.kode);
+  // Kacab boleh update status/keterangan/foto buat baris gerai kacab-nya sendiri.
+  // AM boleh update status/keterangan/foto buat baris gerai mana pun yang ada di
+  // Kode Area dia (lintas kacab, karena satu AM bisa mengawasi beberapa kacab sekaligus).
+  // Keuangan cuma bisa lihat (read-only), gak dapet form ini.
+  const bisaFollowUp =
+    (STATE.role === 'KACAB' && String(currentRow['Kode Kacab']) === String(STATE.kode)) ||
+    (STATE.role === 'AM' && areaOfGerai(currentRow['Kode Gerai']) === String(STATE.kode));
   document.getElementById('modal-followup').style.display = bisaFollowUp ? 'block' : 'none';
   if (bisaFollowUp) {
+    // Kacab: tanpa status, keterangan wajib. AM: isi "Diketahui", keterangan opsional.
+    document.getElementById('detail-status-wrap').style.display = STATE.role === 'AM' ? 'block' : 'none';
+    document.getElementById('detail-keterangan-label').textContent =
+      STATE.role === 'KACAB' ? 'Keterangan / Action Plan Tambahan (wajib)' : 'Keterangan / Action Plan Tambahan (opsional)';
     document.getElementById('detail-status').value = '';
     document.getElementById('detail-keterangan').value = '';
     document.getElementById('detail-foto-camera').value = '';
@@ -643,8 +687,13 @@ async function submitFollowUp() {
   const statusVal = document.getElementById('detail-status').value;
   const keterangan = document.getElementById('detail-keterangan').value.trim();
   const errEl = document.getElementById('detail-err');
+  if (STATE.role === 'KACAB' && !keterangan) {
+    errEl.textContent = 'Keterangan wajib diisi ya.';
+    errEl.style.display = 'block';
+    return;
+  }
   if (!statusVal && !keterangan && !pendingFotosDetail.length) {
-    errEl.textContent = 'Isi status baru, keterangan, atau foto dulu ya.';
+    errEl.textContent = 'Isi Diketahui, keterangan, atau foto dulu ya.';
     errEl.style.display = 'block';
     return;
   }
@@ -656,7 +705,7 @@ async function submitFollowUp() {
     selisihId: currentRow['ID'], tanggal: new Date().toISOString().slice(0, 10),
     keterangan, role: STATE.role, kode: STATE.kode, pin: STATE.pin
   };
-  if (statusVal) payload.status = statusVal;
+  if (statusVal && STATE.role === 'AM') payload.status = statusVal;
   if (pendingFotosDetail.length) {
     payload.fotos = pendingFotosDetail.map(f => ({ base64: f.base64, mime: f.mime, name: f.name }));
     payload.fotoBase64 = pendingFotosDetail[0].base64;
@@ -674,7 +723,7 @@ async function submitFollowUp() {
       'Foto IDs': (res.fotoIds || (res.fotoId ? [res.fotoId] : [])).join(','),
       'Role': STATE.role, 'Nama': res.nama, 'Waktu': res.waktu
     });
-    if (statusVal) {
+    if (statusVal && STATE.role === 'AM') {
       currentRow['Status'] = statusVal;
       const idx = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
       if (idx > -1) STATE.data[idx]['Status'] = statusVal;
@@ -703,7 +752,6 @@ function openAddModal() {
   document.getElementById('add-tanggal').value = new Date().toISOString().slice(0, 10);
   document.getElementById('add-pos').value = '';
   document.getElementById('add-platform-omzet').value = '';
-  document.getElementById('add-status').value = 'Belum Terselesaikan';
   document.getElementById('add-keterangan').value = '';
   document.getElementById('add-foto-camera').value = '';
   document.getElementById('add-foto-gallery').value = '';
@@ -745,12 +793,12 @@ async function submitDataSelisih() {
   const platform = document.getElementById('add-platform').value;
   const omzetPos = document.getElementById('add-pos').value;
   const omzetPlatform = document.getElementById('add-platform-omzet').value;
-  const status = document.getElementById('add-status').value;
+  const status = STATUS_BELUM; // kacab tidak isi status; baris baru otomatis Belum Diketahui AM
   const keterangan = document.getElementById('add-keterangan').value.trim();
   const errEl = document.getElementById('add-err');
 
-  if (!tanggal || !geraiKode || omzetPos === '' || omzetPlatform === '') {
-    errEl.textContent = 'Lengkapi semua field dulu ya.';
+  if (!tanggal || !geraiKode || omzetPos === '' || omzetPlatform === '' || !keterangan) {
+    errEl.textContent = 'Lengkapi semua field dulu ya, keterangan wajib diisi.';
     errEl.style.display = 'block';
     return;
   }
