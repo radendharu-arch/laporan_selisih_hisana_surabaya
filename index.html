@@ -198,7 +198,7 @@
         <tr>
           <th>Tanggal</th><th>Gerai</th><th>Platform</th>
           <th>Omzet POS</th><th>Omzet Platform</th>
-          <th>Selisih</th><th>Diketahui AM</th>
+          <th>Selisih</th><th>Diketahui AM</th><th>Diketahui Keuangan</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -574,6 +574,12 @@ function statusFor(row) {
   if (row['Status'] === STATUS_DIKETAHUI) return { label: 'Diketahui', cls: 'hijau' };
   return { label: STATUS_BELUM, cls: 'merah' };
 }
+// Persetujuan Keuangan disimpan di kolom "Status Keuangan" (kosong / tidak ada = Belum Diketahui).
+const KOLOM_STATUS_KEUANGAN = 'Status Keuangan';
+function statusKeuFor(row) {
+  if (row[KOLOM_STATUS_KEUANGAN] === STATUS_DIKETAHUI) return { label: 'Diketahui', cls: 'hijau' };
+  return { label: STATUS_BELUM, cls: 'merah' };
+}
 
 // Download laporan (sesuai filter Kacab yang lagi aktif) sebagai CSV. Pemisah titik koma +
 // BOM UTF-8 biar langsung kebuka rapi per kolom di Excel dengan pengaturan regional Indonesia.
@@ -587,13 +593,13 @@ function downloadCsv() {
     .filter(a => String(a['Selisih ID']) === String(id) && a['Role'] === role)
     .map(a => a['Keterangan']).filter(Boolean).join(' | ');
   const header = ['ID', 'Tanggal', 'Kode Kacab', 'Kode Gerai', 'Nama Gerai', 'Platform',
-    'Omzet POS', 'Omzet Platform', 'Selisih Rp', 'Selisih Persen', 'Diketahui AM',
-    'Keterangan Kacab', 'Keterangan AM'];
+    'Omzet POS', 'Omzet Platform', 'Selisih Rp', 'Selisih Persen', 'Diketahui AM', 'Diketahui Keuangan',
+    'Keterangan Kacab', 'Keterangan AM', 'Keterangan Keuangan'];
   const lines = [header].concat(rows.map(r => [
     r['ID'], fmtTanggal(r['Tanggal']), r['Kode Kacab'], r['Kode Gerai'], r['Nama Gerai'], r['Platform'],
     Number(r['Omzet POS']) || 0, Number(r['Omzet Platform']) || 0, Number(r['Selisih Rp']) || 0,
     Number(r['Selisih Persen'] || 0).toFixed(1).replace('.', ','),
-    statusFor(r).label, ket(r['ID'], 'KACAB'), ket(r['ID'], 'AM')
+    statusFor(r).label, statusKeuFor(r).label, ket(r['ID'], 'KACAB'), ket(r['ID'], 'AM'), ket(r['ID'], 'KEUANGAN')
   ])).map(cols => cols.map(csvCell).join(';'));
   const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
@@ -631,6 +637,7 @@ function render() {
 
   tbody.innerHTML = rows.map((r, i) => {
     const st = statusFor(r);
+    const sk = statusKeuFor(r);
     return `<tr class="rowclick" onclick="openModal(${i})">
       <td data-label="Tanggal">${fmtTanggal(r['Tanggal'])}</td>
       <td data-label="Gerai">${r['Nama Gerai']}</td>
@@ -639,6 +646,7 @@ function render() {
       <td data-label="Omzet Platform">${fmtRp(r['Omzet Platform'])}</td>
       <td data-label="Selisih">${fmtRp(r['Selisih Rp'])} (${Number(r['Selisih Persen']||0).toFixed(1)}%)</td>
       <td data-label="Diketahui AM"><span class="badge ${st.cls}">${st.label}</span></td>
+      <td data-label="Diketahui Keuangan"><span class="badge ${sk.cls}">${sk.label}</span></td>
     </tr>`;
   }).join('');
 
@@ -646,11 +654,15 @@ function render() {
   const totalSelisih = rows.reduce((a, r) => a + (Number(r['Selisih Rp']) || 0), 0);
   const besar = rows.filter(r => statusFor(r).cls === 'merah').length;
   const match = rows.filter(r => statusFor(r).cls === 'hijau').length;
+  const keuBelum = rows.filter(r => statusKeuFor(r).cls === 'merah').length;
+  const keuSudah = rows.length - keuBelum;
   document.getElementById('kpis').innerHTML = `
     <div class="kpi"><div class="label">Total Baris</div><div class="value">${rows.length}</div></div>
     <div class="kpi"><div class="label">Total Selisih</div><div class="value">${fmtRp(totalSelisih)}</div></div>
     <div class="kpi"><div class="label">Belum Diketahui AM</div><div class="value" style="color:var(--merah)">${besar}</div></div>
     <div class="kpi"><div class="label">Diketahui AM</div><div class="value" style="color:var(--hijau)">${match}</div></div>
+    <div class="kpi"><div class="label">Belum Diketahui Keuangan</div><div class="value" style="color:var(--merah)">${keuBelum}</div></div>
+    <div class="kpi"><div class="label">Diketahui Keuangan</div><div class="value" style="color:var(--hijau)">${keuSudah}</div></div>
   `;
 }
 
@@ -727,13 +739,15 @@ function openModal(idx) {
   currentRow = scopedRows()[idx];
   renderModalBody();
 
-  // Cuma AM (untuk baris di Kode Area dia, lintas kacab) yang dapet form update, dan cuma
-  // sekali: begitu AM simpan (status jadi Diketahui), laporan terkunci dan popup-nya
-  // jadi tampilan baca saja. Kacab dan Keuangan cuma bisa lihat laporannya (read-only).
+  // AM (baris di Kode Area dia, lintas kacab) dan Keuangan (semua baris) dapat form update,
+  // masing-masing cuma sekali: begitu disimpan (jadi Diketahui), persetujuan itu terkunci dan
+  // popup-nya jadi tampilan baca saja. Kacab cuma bisa lihat laporannya (read-only).
   const bisaFollowUp =
-    STATE.role === 'AM' &&
-    areaOfGerai(currentRow['Kode Gerai']) === String(STATE.kode) &&
-    currentRow['Status'] !== STATUS_DIKETAHUI;
+    (STATE.role === 'AM' &&
+      areaOfGerai(currentRow['Kode Gerai']) === String(STATE.kode) &&
+      currentRow['Status'] !== STATUS_DIKETAHUI) ||
+    (STATE.role === 'KEUANGAN' &&
+      currentRow[KOLOM_STATUS_KEUANGAN] !== STATUS_DIKETAHUI);
   document.getElementById('modal-followup').style.display = bisaFollowUp ? 'block' : 'none';
   if (bisaFollowUp) {
     document.getElementById('detail-status').value = '';
@@ -755,8 +769,10 @@ function renderModalBody() {
   document.getElementById('modal-title').textContent =
     `${currentRow['Nama Gerai']} - ${currentRow['Platform']} (${fmtTanggal(currentRow['Tanggal'])})`;
   const st = statusFor(currentRow);
+  const sk = statusKeuFor(currentRow);
   document.getElementById('modal-meta').innerHTML =
-    `Selisih ${fmtRp(currentRow['Selisih Rp'])} (${Number(currentRow['Selisih Persen']||0).toFixed(1)}%) &middot; <span class="badge ${st.cls}">${st.label}</span>`;
+    `Selisih ${fmtRp(currentRow['Selisih Rp'])} (${Number(currentRow['Selisih Persen']||0).toFixed(1)}%)<br>` +
+    `AM: <span class="badge ${st.cls}">${st.label}</span> &middot; Keuangan: <span class="badge ${sk.cls}">${sk.label}</span>`;
 
   const comments = STATE.actionPlans.filter(a => String(a['Selisih ID']) === String(currentRow['ID']));
   const box = document.getElementById('modal-comments');
@@ -820,6 +836,8 @@ async function submitFollowUp() {
   const btn = document.getElementById('btn-save-followup');
   btn.disabled = true; btn.textContent = 'Menyimpan...';
 
+  // AM mengisi kolom "Status", Keuangan mengisi kolom "Status Keuangan".
+  const kolomStatus = STATE.role === 'KEUANGAN' ? KOLOM_STATUS_KEUANGAN : 'Status';
   const payload = {
     selisihId: currentRow['ID'], tanggal: new Date().toISOString().slice(0, 10),
     keterangan, role: STATE.role, kode: STATE.kode, pin: STATE.pin
@@ -837,9 +855,9 @@ async function submitFollowUp() {
     if (!res.success) {
       if (res.locked) {
         // Ternyata sudah keburu diketahui (mis. disimpan dari perangkat lain): kunci tampilan lokal.
-        currentRow['Status'] = STATUS_DIKETAHUI;
+        currentRow[kolomStatus] = STATUS_DIKETAHUI;
         const i2 = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
-        if (i2 > -1) STATE.data[i2]['Status'] = STATUS_DIKETAHUI;
+        if (i2 > -1) STATE.data[i2][kolomStatus] = STATUS_DIKETAHUI;
         alert(res.error);
         closeModal();
         render();
@@ -854,9 +872,9 @@ async function submitFollowUp() {
       'Foto IDs': (res.fotoIds || (res.fotoId ? [res.fotoId] : [])).join(','),
       'Role': STATE.role, 'Nama': res.nama, 'Waktu': res.waktu
     });
-    currentRow['Status'] = statusVal;
+    currentRow[kolomStatus] = statusVal;
     const idx = STATE.data.findIndex(d => String(d['ID']) === String(currentRow['ID']));
-    if (idx > -1) STATE.data[idx]['Status'] = statusVal;
+    if (idx > -1) STATE.data[idx][kolomStatus] = statusVal;
 
     pendingFotosDetail = [];
     closeModal();  // langsung tertutup; laporan ini sekarang terkunci
